@@ -1,7 +1,7 @@
 {
   "id": "battleheim_lion_fury_lag_fix",
   "name": "Battleheim Lion Fury Lag Fix",
-  "description": "Removes the ALLY_FRENZY animation before buff visuals are created; optional static red tint.",
+  "description": "Removes the Lion Fury animation that lags the game, with an optional static red tint.",
   "version": "0.2.0",
   "author": "Qwettque",
   "api": "1.4",

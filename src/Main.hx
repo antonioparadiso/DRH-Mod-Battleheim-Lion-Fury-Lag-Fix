@@ -14,8 +14,8 @@ import openfl.events.Event;
  * `ready`, before the game loop starts. A BuffView only asks for the effect
  * when `VFX` names one, so the laggy symbol is never loaded.
  *
- * The mod's "ON" option picks what the character shows instead: the static red
- * tint (checked, the default) or nothing at all (unchecked).
+ * The mod's "Red tint" option picks what the character shows instead: the
+ * static red tint (checked, the default) or nothing at all (unchecked).
  */
 class Main extends Mod {
 	static inline var BATTLEFURY_ID:Int = 35093;
@@ -35,7 +35,7 @@ class Main extends Mod {
 		this.context = context;
 
 		// Settings > MODS (ADVANCED before DRH 18) > Battleheim Lion Fury Lag Fix.
-		enabled = context.settings.flag("enabled", "ON", "Off: animation completely removed.", true);
+		enabled = context.settings.flag("enabled", "Red tint", "Shows a static red tint. Off: animation completely removed.", true);
 		enabled.onChange(onEnabledChanged);
 
 		context.core.onObjectReady(function(object) {
