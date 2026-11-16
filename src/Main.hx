@@ -6,12 +6,16 @@ import actor.buffs.DistributedBuffGameObject;
 import gameMasterDictionary.GMBuff;
 import mods.api.Context;
 import mods.api.Mod;
+import mods.api.settings.Flag;
 import openfl.events.Event;
 
 /**
- * Clears the ALLY_FRENZY (35093) VFX from the runtime GameMaster table before
- * a BuffView can create it. The distributed buff and its gameplay data remain
- * active, and the actor always receives a static red tint instead.
+ * Clears the ALLY_FRENZY (35093) VFX from the runtime GameMaster table in
+ * `ready`, before the game loop starts. A BuffView only asks for the effect
+ * when `VFX` names one, so the laggy symbol is never loaded.
+ *
+ * The mod's "ON" option picks what the character shows instead: the static red
+ * tint (checked, the default) or nothing at all (unchecked).
  */
 class Main extends Mod {
 	static inline var BATTLEFURY_ID:Int = 35093;
@@ -19,24 +23,32 @@ class Main extends Mod {
 	static inline var TINT_AMOUNT:Float = 0.60;
 
 	var context:Context;
+	var enabled:Flag;
 	var observed:Map<Int, DistributedBuffGameObject> = new Map();
 	var applied:Map<Int, Dynamic> = new Map();
+	var observedCount:Int = 0;
+	var appliedCount:Int = 0;
 	var stopped:Bool = false;
 	var failureLogged:Bool = false;
 
 	override public function init(context:Context):Void {
 		this.context = context;
-		context.onTablesLoaded(disableBattlefuryAnimation);
+
+		// Settings > MODS (ADVANCED before DRH 18) > Battleheim Lion Fury Lag Fix.
+		enabled = context.settings.flag("enabled", "ON", "Off: animation completely removed.", true);
+		enabled.onChange(onEnabledChanged);
 
 		context.core.onObjectReady(function(object) {
 			if (!Std.isOfType(object, DistributedBuffGameObject)) return;
 			var buff:DistributedBuffGameObject = cast object;
-			if (buff.type == BATTLEFURY_ID) observed.set(buff.id, buff);
+			if (buff.type != BATTLEFURY_ID) return;
+			if (!observed.exists(buff.id)) observedCount++;
+			observed.set(buff.id, buff);
 		});
 		context.core.onObjectGone(function(object) {
 			if (!Std.isOfType(object, DistributedBuffGameObject)) return;
 			var buff:DistributedBuffGameObject = cast object;
-			if (buff.type == BATTLEFURY_ID) observed.remove(buff.id);
+			if (buff.type == BATTLEFURY_ID && observed.remove(buff.id)) observedCount--;
 		});
 		context.onFloorExit(function(_) clearAll());
 		context.overlay.addEventListener(Event.EXIT_FRAME, update);
@@ -44,7 +56,7 @@ class Main extends Mod {
 
 	override public function ready(context:Context):Void {
 		disableBattlefuryAnimation();
-		context.log("loaded: Battleheim Lion Fury Lag Fix; Battlefury always uses a static red tint");
+		context.log("loaded: Battleheim Lion Fury Lag Fix; static red tint " + (enabled.value ? "on" : "off (animation removed, nothing drawn)"));
 	}
 
 	function disableBattlefuryAnimation():Void {
@@ -58,8 +70,22 @@ class Main extends Mod {
 		}
 	}
 
+	function onEnabledChanged(value:Bool):Void {
+		if (context == null) return;
+		if (value) {
+			context.log("static red tint on");
+			return;
+		}
+		context.log("static red tint off: the animation stays removed and nothing is drawn");
+		clearTints();
+	}
+
 	function update(event:Event):Void {
 		if (stopped || !context.core.alive) return;
+		// Off: no tint to keep, and nothing the pass would do.
+		if (!enabled.value) return;
+		// Nothing tracked: skip the map and array this frame would allocate.
+		if (observedCount == 0 && appliedCount == 0) return;
 		var present:Map<Int, Bool> = new Map();
 		try {
 			for (id in observed.keys()) {
@@ -91,6 +117,7 @@ class Main extends Mod {
 				// GameMaster.VFX was cleared before gameplay, so this buff view
 				// never creates the animated effect. Keep the static tint active.
 				applied.set(actorId, {view: actorView, gameBuff: gameBuff, tinted: false});
+				appliedCount++;
 				setActorTint(actorId);
 			}
 
@@ -139,12 +166,18 @@ class Main extends Mod {
 		} catch (error:Dynamic) {
 			if (context != null) context.log("could not clear Battlefury tint: " + Std.string(error));
 		}
-		applied.remove(actorId);
+		if (applied.remove(actorId)) appliedCount--;
+	}
+
+	function clearTints():Void {
+		for (actorId in [for (id in applied.keys()) id]) clearActor(actorId);
+		appliedCount = 0;
 	}
 
 	function clearAll():Void {
-		for (actorId in [for (id in applied.keys()) id]) clearActor(actorId);
+		clearTints();
 		observed.clear();
+		observedCount = 0;
 	}
 
 	override public function dispose():Void {
